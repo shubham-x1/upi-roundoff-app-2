@@ -21,24 +21,60 @@ const paiseToRupee = (p) => +(p / 100).toFixed(2); // return number (not string)
 connectDB().then(() => {
   // health
   app.get('/api/health', (req, res) => res.json({ success: true, ok: true }));
+app.post('/api/user', async (req, res) => {
+  try {
+    const { uid, email, displayName, upiId, initialBalance } = req.body;
+    if (!uid || !displayName)
+      return res.status(400).json({ success: false, error: 'uid and displayName required' });
+
+    // 🟢 Check if user already exists
+    let existingUser = await User.findOne({ uid });
+
+    if (existingUser) {
+      return res.json({
+        success: true,
+        message: "User already exists",
+        user: {
+          uid: existingUser.uid,
+          email: existingUser.email,
+          displayName: existingUser.displayName,
+          balance: paiseToRupee(existingUser.balancePaise),
+          savings: paiseToRupee(existingUser.savingsPaise)
+        }
+      });
+    }
+
+    // 🟢 Create new user ONLY if not exists
+    const balancePaise = initialBalance ? rupeeToPaise(initialBalance) : 0;
+
+    const newUser = await User.create({
+      uid,
+      email,
+      displayName,
+      upiId: upiId || '',
+      balancePaise,
+      savingsPaise: 0
+    });
+
+    return res.json({
+      success: true,
+      user: {
+        uid: newUser.uid,
+        email: newUser.email,
+        displayName: newUser.displayName,
+        balance: paiseToRupee(newUser.balancePaise),
+        savings: paiseToRupee(newUser.savingsPaise)
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
   // create user (test)
   // body: { uid, email, displayName, upiId?, initialBalance? }
-  app.post('/api/user', async (req, res) => {
-    try {
-      const { uid, email, displayName, upiId, initialBalance } = req.body;
-      if (!uid || !displayName) return res.status(400).json({ success: false, error: 'uid and displayName required' });
-
-      const balancePaise = initialBalance ? rupeeToPaise(initialBalance) : 0;
-      const user = new User({ uid, email, displayName, upiId: upiId || '', balancePaise, savingsPaise: 0 });
-      await user.save();
-      return res.json({ success: true, user: { uid: user.uid, displayName: user.displayName } });
-    } catch (err) {
-      console.error(err);
-      if (err.code === 11000) return res.status(400).json({ success: false, error: 'uid exists' });
-      return res.status(500).json({ success: false, error: err.message });
-    }
-  });
 
   // fund user (add money)
   // POST /api/user/:uid/fund  body: { amount, note? } amount rupees
